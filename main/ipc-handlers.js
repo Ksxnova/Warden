@@ -242,6 +242,87 @@ function init(config, mainWindow) {
     return null;
   });
 
+  ipcMain.handle('project:detect', (e, dir) => {
+    const fs = require('fs');
+    const path = require('path');
+    try {
+      let files = fs.readdirSync(dir);
+
+      // If nothing useful at root, check one level of subdirectories
+      const hasUsefulFiles = f => f.match(/\.(jar|py|js|json|toml|mod|properties|yml|yaml|txt)$/i);
+      if (!files.some(hasUsefulFiles)) {
+        const subdirs = files.filter(f => {
+          try { return fs.statSync(path.join(dir, f)).isDirectory(); } catch { return false; }
+        });
+        for (const sub of subdirs) {
+          const subFiles = fs.readdirSync(path.join(dir, sub));
+          if (subFiles.some(hasUsefulFiles)) {
+            dir = path.join(dir, sub);
+            files = subFiles;
+            break;
+          }
+        }
+      }
+      const has = f => files.includes(f);
+      const name = path.basename(dir);
+
+      // Node.js / Discord.js bot
+      if (has('package.json')) {
+        try {
+          const pkg = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8'));
+          const main = pkg.main || 'index.js';
+          const start = pkg.scripts && pkg.scripts.start;
+          const isMinecraft = JSON.stringify(pkg).toLowerCase().includes('minecraft');
+          const type = isMinecraft ? 'minecraft-server' : 'discord-bot';
+          // Parse start script if it exists
+          if (start && start.startsWith('node ')) {
+            const parts = start.replace('node ', '').trim().split(/\s+/);
+            return { dir, name: pkg.name || name, type, command: 'node', args: parts, env: {} };
+          }
+          return { dir, name: pkg.name || name, type, command: 'node', args: [main], env: {} };
+        } catch {}
+        return { dir, name, type: 'discord-bot', command: 'node', args: ['index.js'], env: {} };
+      }
+
+      // Python bot
+      if (has('requirements.txt') || has('bot.py') || has('main.py') || has('run.py')) {
+        const entry = ['bot.py','main.py','run.py','app.py'].find(f => has(f)) || 'main.py';
+        return { dir, name, type: 'discord-bot', command: 'python', args: [entry], env: {} };
+      }
+
+      // Minecraft server — detect by properties/yml files or any jar
+      const mcIndicators = ['server.properties','bukkit.yml','spigot.yml','paper.yml','paper-global.yml',
+        'config/paper-global.yml','eula.txt','ops.json','whitelist.json','banned-players.json'];
+      const hasMcFile = mcIndicators.some(f => has(f));
+      const allJars = files.filter(f => f.match(/\.jar$/i));
+      // Score jars by how MC-like their name is
+      const mcJarScore = f => {
+        const n = f.toLowerCase();
+        if (n.match(/paper|spigot|purpur|forge|fabric|bungeecord|velocity|waterfall|minecraft_server|server/)) return 10;
+        if (n.match(/\.jar$/)) return 1;
+        return 0;
+      };
+      const bestJar = allJars.sort((a,b) => mcJarScore(b) - mcJarScore(a))[0];
+      if (hasMcFile || (bestJar && mcJarScore(bestJar) >= 10)) {
+        const jar = bestJar || 'server.jar';
+        return { dir, name, type: 'minecraft-server', command: 'java', args: ['-Xmx2G', '-Xms1G', '-jar', jar, 'nogui'], env: {} };
+      }
+
+      // Java jar (generic)
+      if (allJars.length > 0) {
+        return { name, type: 'custom', command: 'java', args: ['-jar', allJars[0]], env: {} };
+      }
+
+      // Go
+      if (has('go.mod')) return { name, type: 'custom', command: 'go', args: ['run', '.'], env: {} };
+
+      // Rust
+      if (has('Cargo.toml')) return { name, type: 'custom', command: 'cargo', args: ['run'], env: {} };
+
+      return null;
+    } catch { return null; }
+  });
+
   ipcMain.handle('dialog:openFile', async (e, filters) => {
     const result = await dialog.showOpenDialog(_mainWindow, {
       properties: ['openFile'],

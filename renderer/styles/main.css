@@ -447,6 +447,45 @@ html, body {
   font-weight: 600;
 }
 
+.mc-connect-box {
+  margin-top: 6px;
+  padding: 6px 8px;
+  background: var(--bg-tertiary);
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.mc-addr-row {
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.mc-addr-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  min-width: 38px;
+}
+.mc-addr-val {
+  font-family: var(--font-mono);
+  user-select: all;
+  color: var(--text-secondary);
+}
+.mc-addr-public .mc-addr-val {
+  color: #43e97b;
+  font-weight: 600;
+}
+.mc-addr-copyable {
+  cursor: pointer;
+}
+.mc-addr-copyable:hover {
+  text-decoration: underline;
+}
+
 /* ── Logs Tab ──────────────────────────────────────────────────────────── */
 #tab-logs { overflow: hidden; }
 

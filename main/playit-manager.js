@@ -25,12 +25,44 @@ function getDefaultPlayitPath() {
   return path.join(appData, 'Warden', 'playit.exe');
 }
 
+async function getPlayitDownloadUrl() {
+  return new Promise((resolve, reject) => {
+    https.get({
+      hostname: 'api.github.com',
+      path: '/repos/playit-cloud/playit-agent/releases/latest',
+      headers: { 'User-Agent': 'Warden', 'Accept': 'application/vnd.github.v3+json' }
+    }, res => {
+      let data = '';
+      res.on('data', chunk => { data += chunk; });
+      res.on('end', () => {
+        try {
+          const release = JSON.parse(data);
+          // Prefer signed 64-bit exe on Windows
+          const asset = release.assets.find(a => a.name === 'playit-windows-x86_64-signed.exe')
+            || release.assets.find(a => a.name === 'playit-windows-x86_64.exe')
+            || release.assets.find(a => /windows.*x86_64.*\.exe$/i.test(a.name))
+            || release.assets.find(a => /windows.*\.exe$/i.test(a.name));
+          if (!asset) { reject(new Error('No Windows exe found in latest release')); return; }
+          resolve(asset.browser_download_url);
+        } catch (e) { reject(e); }
+      });
+    }).on('error', reject);
+  });
+}
+
 async function downloadPlayit(destPath) {
-  const url = 'https://github.com/playit-cloud/playit-agent/releases/latest/download/playit-windows_amd64.exe';
   fs.mkdirSync(path.dirname(destPath), { recursive: true });
 
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
     push('playit:download', { status: 'downloading' });
+
+    let url;
+    try {
+      url = await getPlayitDownloadUrl();
+    } catch (e) {
+      // Fallback to known URL pattern
+      url = 'https://github.com/playit-cloud/playit-agent/releases/latest/download/playit-windows-x86_64.exe';
+    }
 
     function doDownload(downloadUrl, redirectCount = 0) {
       if (redirectCount > 5) { reject(new Error('Too many redirects')); return; }
@@ -56,19 +88,33 @@ async function downloadPlayit(destPath) {
 
 // Parse playit.gg output for useful info
 function parsePlayitLine(line) {
-  // Claim URL: "please go to https://playit.gg/claim/xxxxx"
-  const claimMatch = line.match(/https?:\/\/playit\.gg\/claim\/[a-zA-Z0-9_-]+/i);
+  // Claim URL: any playit.gg/claim/... URL anywhere in the line
+  const claimMatch = line.match(/https?:\/\/(?:www\.)?playit\.gg\/claim\/[a-zA-Z0-9_-]+/i);
   if (claimMatch) return { type: 'claim', url: claimMatch[0] };
 
-  // Tunnel address patterns: "tcp://xxx.joinmc.link:12345" or "address: xxx.joinmc.link:12345"
-  const tcpMatch = line.match(/tcp:\/\/([a-zA-Z0-9.\-]+:\d+)/i);
+  // Claim code style: "claim code: XXXXX" → build URL
+  const claimCode = line.match(/claim[_\s-]*(?:code|key|url|link)?[\s:=]+([a-zA-Z0-9_-]{8,})/i);
+  if (claimCode && !line.match(/tunnel|address|port/i)) {
+    const code = claimCode[1];
+    if (!code.includes('.') && !code.includes(':')) {
+      return { type: 'claim', url: `https://playit.gg/claim/${code}` };
+    }
+  }
+
+  // Tunnel address: tcp:// or udp:// style
+  const tcpMatch = line.match(/(?:tcp|udp):\/\/([a-zA-Z0-9.\-]+:\d+)/i);
   if (tcpMatch) return { type: 'tunnel', address: tcpMatch[1] };
 
-  const addrMatch = line.match(/(?:address|tunnel|connect)[\s:]+([a-zA-Z0-9.\-]+\.(?:joinmc\.link|playit\.gg)(?::\d+)?)/i);
+  // address/tunnel/connect followed by known playit domains
+  const addrMatch = line.match(/(?:address|tunnel|connect|proxy|allocated)[\s:=]+([a-zA-Z0-9.\-]+\.(?:joinmc\.link|playit\.gg|ply\.gg)(?::\d+)?)/i);
   if (addrMatch) return { type: 'tunnel', address: addrMatch[1] };
 
-  // IP address assignments
-  const ipMatch = line.match(/(?:public address|assigned)[\s:]+(\d+\.\d+\.\d+\.\d+(?::\d+)?)/i);
+  // Any joinmc.link or ply.gg hostname in the line
+  const domainMatch = line.match(/([a-zA-Z0-9.\-]+\.(?:joinmc\.link|ply\.gg))(?::(\d+))?/i);
+  if (domainMatch) return { type: 'tunnel', address: domainMatch[2] ? `${domainMatch[1]}:${domainMatch[2]}` : domainMatch[1] };
+
+  // IP:port public address
+  const ipMatch = line.match(/(?:public|assigned|address)[\s:=]+(\d+\.\d+\.\d+\.\d+:\d+)/i);
   if (ipMatch) return { type: 'tunnel', address: ipMatch[1] };
 
   return null;
@@ -90,7 +136,13 @@ function start(processId, config) {
   const child = spawn(execPath, args, {
     cwd: config.directory || process.cwd(),
     stdio: ['pipe', 'pipe', 'pipe'],
-    windowsHide: true
+    windowsHide: true,
+    env: {
+      ...process.env,
+      RUST_LOG: 'info',
+      NO_COLOR: '1',
+      TERM: 'dumb'
+    }
   });
 
   instances[processId] = {
@@ -102,6 +154,9 @@ function start(processId, config) {
 
   function onLine(line) {
     push('playit:log', { id: processId, text: line });
+    // Mirror to the process log view so the user can see playit output
+    const logManager = require('./log-manager');
+    logManager.pushLine(processId, `[playit] ${line}`, 'stdout');
     const parsed = parsePlayitLine(line);
     if (!parsed) return;
 

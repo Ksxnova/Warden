@@ -1,4 +1,7 @@
 const { app, BrowserWindow } = require('electron');
+
+// Move GPU/disk cache out of OneDrive to avoid "Access is denied" errors
+app.commandLine.appendSwitch('disk-cache-dir', require('os').tmpdir() + '/warden-cache');
 const path = require('path');
 const configManager = require('./config-manager');
 const processManager = require('./process-manager');

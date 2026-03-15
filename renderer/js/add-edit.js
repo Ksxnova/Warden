@@ -55,6 +55,9 @@ window.AddEditModule = (() => {
     document.getElementById('form-backoff').value = 1.5;
     document.getElementById('form-schedule-enabled').checked = false;
     document.getElementById('schedule-options').classList.add('hidden');
+    document.getElementById('form-mc-port').value = 25565;
+    document.getElementById('mc-local-addr').textContent = 'localhost:25565';
+    document.getElementById('mc-port-section').classList.add('hidden');
     document.getElementById('form-rcon-enabled').checked = false;
     document.getElementById('rcon-options').classList.add('hidden');
     document.getElementById('rcon-section').classList.add('hidden');
@@ -69,6 +72,7 @@ window.AddEditModule = (() => {
   function updateTypeSpecific() {
     const type = document.getElementById('form-type').value;
     const isMinecraft = type === 'minecraft-server';
+    document.getElementById('mc-port-section').classList.toggle('hidden', !isMinecraft);
     document.getElementById('rcon-section').classList.toggle('hidden', !isMinecraft);
     document.getElementById('playit-section').classList.toggle('hidden', !isMinecraft);
   }
@@ -104,6 +108,11 @@ window.AddEditModule = (() => {
     document.getElementById('form-start-time').value = sched.startTime || '08:00';
     document.getElementById('form-stop-time').value = sched.stopTime || '23:00';
     setSelectedDays(sched.days || [1, 2, 3, 4, 5]);
+
+    // Minecraft server port
+    const mcPort = proc.minecraftPort || 25565;
+    document.getElementById('form-mc-port').value = mcPort;
+    document.getElementById('mc-local-addr').textContent = `localhost:${mcPort}`;
 
     // RCON
     const rcon = proc.rcon || {};
@@ -152,6 +161,7 @@ window.AddEditModule = (() => {
         stopTime: document.getElementById('form-stop-time').value,
         days: getSelectedDays()
       },
+      minecraftPort: parseInt(document.getElementById('form-mc-port').value, 10) || 25565,
       rcon: {
         enabled: document.getElementById('form-rcon-enabled').checked,
         host: document.getElementById('form-rcon-host').value,
@@ -272,6 +282,27 @@ window.AddEditModule = (() => {
     pendingSuggestion = null;
   }
 
+  async function autoDetectFromDir(dir) {
+    const result = await api.detectProject(dir);
+    if (!result) return;
+    if (result.name && !document.getElementById('form-name').value)
+      document.getElementById('form-name').value = result.name;
+    if (result.type)
+      document.getElementById('form-type').value = result.type;
+    if (result.command)
+      document.getElementById('form-command').value = result.command;
+    if (result.args && result.args.length)
+      document.getElementById('form-args').value = result.args.join(' ');
+    if (result.env && Object.keys(result.env).length) {
+      document.getElementById('env-tbody').innerHTML = '';
+      Object.entries(result.env).forEach(([k, v]) => addEnvRow(k, v));
+    }
+    if (result.dir && result.dir !== dir)
+      document.getElementById('form-directory').value = result.dir;
+    updateTypeSpecific();
+    if (result.command) showToast(`Auto-detected: ${result.command} ${(result.args||[]).join(' ')}`, 'success');
+  }
+
   function init() {
     document.getElementById('process-form').addEventListener('submit', handleSubmit);
 
@@ -282,7 +313,10 @@ window.AddEditModule = (() => {
 
     document.getElementById('btn-browse-dir').addEventListener('click', async () => {
       const dir = await api.openDirectory();
-      if (dir) document.getElementById('form-directory').value = dir;
+      if (dir) {
+        document.getElementById('form-directory').value = dir;
+        await autoDetectFromDir(dir);
+      }
     });
 
     document.getElementById('btn-ai-setup').addEventListener('click', async () => {
@@ -310,6 +344,12 @@ window.AddEditModule = (() => {
     // Schedule toggle
     document.getElementById('form-schedule-enabled').addEventListener('change', e => {
       document.getElementById('schedule-options').classList.toggle('hidden', !e.target.checked);
+    });
+
+    // MC port live preview
+    document.getElementById('form-mc-port').addEventListener('input', e => {
+      const p = parseInt(e.target.value, 10) || 25565;
+      document.getElementById('mc-local-addr').textContent = `localhost:${p}`;
     });
 
     // RCON toggle

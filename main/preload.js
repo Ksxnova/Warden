@@ -37,6 +37,7 @@ contextBridge.exposeInMainWorld('api', {
   getNextTrigger: (id) => ipcRenderer.invoke('scheduler:getNextTrigger', id),
 
   // Dialogs
+  detectProject: (dir) => ipcRenderer.invoke('project:detect', dir),
   openDirectory: () => ipcRenderer.invoke('dialog:openDirectory'),
   openFile: (filters) => ipcRenderer.invoke('dialog:openFile', filters),
   saveConfig: () => ipcRenderer.invoke('dialog:saveConfig'),

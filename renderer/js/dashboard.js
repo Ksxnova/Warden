@@ -97,11 +97,26 @@ window.DashboardModule = (() => {
     const crashes = st.totalCrashes > 0 ? `<span class="crash-badge">✕ ${st.totalCrashes}</span>` : '';
     const playerBadge = (proc.type === 'minecraft-server' && players !== undefined)
       ? `<span class="player-count">👥 ${players}</span>` : '';
-    const tunnelBadge = pStatus && pStatus.tunnelUrl
-      ? `<div style="font-size:10.5px;color:#43e97b;margin-top:4px;display:flex;align-items:center;gap:5px;">🌐 <span style="font-family:var(--font-mono);user-select:all">${pStatus.tunnelUrl}</span></div>`
-      : pStatus && pStatus.claimUrl
-      ? `<div style="font-size:10.5px;color:var(--status-starting);margin-top:4px;">🌐 <a href="${pStatus.claimUrl}" style="color:inherit">Claim playit.gg tunnel →</a></div>`
-      : '';
+    const isMc = proc.type === 'minecraft-server';
+    const mcPort = proc.minecraftPort || 25565;
+    const localAddr = isMc ? `localhost:${mcPort}` : null;
+
+    const tunnelBadge = isMc ? (() => {
+      const local = `<div class="mc-addr-row"><span class="mc-addr-label">Local</span><span class="mc-addr-val" title="Connect from this PC">${localAddr}</span></div>`;
+      if (pStatus && pStatus.tunnelUrl) {
+        return `<div class="mc-connect-box">
+          <div class="mc-addr-row mc-addr-public"><span class="mc-addr-label">Public</span><span class="mc-addr-val mc-addr-copyable" title="Share with friends — click to copy" data-copy="${pStatus.tunnelUrl}">${pStatus.tunnelUrl} 📋</span></div>
+          ${local}
+        </div>`;
+      } else if (pStatus && pStatus.claimUrl) {
+        return `<div class="mc-connect-box">
+          <div class="mc-addr-row" style="color:var(--status-starting);font-size:11px;">🌐 <a href="${pStatus.claimUrl}" style="color:inherit;text-decoration:underline">Claim your playit.gg tunnel →</a></div>
+          ${local}
+        </div>`;
+      } else {
+        return `<div class="mc-connect-box">${local}</div>`;
+      }
+    })() : '';
     const restartInfo = st.restartAttempt > 0
       ? `<span class="text-muted text-sm"> (restart ${st.restartAttempt})</span>` : '';
     const cpuVal = stats.cpu !== undefined ? stats.cpu.toFixed(1) + '%' : '—';
@@ -156,8 +171,16 @@ window.DashboardModule = (() => {
         <button class="btn btn-ghost btn-sm btn-icon-only" data-action="logs" title="Logs">📋</button>
         ${isCrashed ? `<button class="btn btn-ai btn-sm btn-icon-only" data-action="ai-analyze" title="AI Analyze">✦</button>` : ''}
         <button class="btn btn-ghost btn-sm btn-icon-only" data-action="edit" title="Edit">✏</button>
+        <button class="btn btn-ghost btn-sm btn-icon-only" data-action="delete" title="Delete" style="color:var(--status-crashed);margin-left:auto">🗑</button>
       </div>
     `;
+
+    // Click-to-copy for public address
+    div.querySelectorAll('.mc-addr-copyable').forEach(el => {
+      el.addEventListener('click', () => {
+        navigator.clipboard.writeText(el.dataset.copy).then(() => showToast('Address copied!', 'success'));
+      });
+    });
 
     // Bind card buttons
     div.querySelectorAll('[data-action]').forEach(btn => {
@@ -174,6 +197,14 @@ window.DashboardModule = (() => {
           setTimeout(() => LogsModule.triggerAiAnalysis(proc.id), 300);
         }
         else if (action === 'edit') { switchTab('add-edit'); AddEditModule.editProcess(proc.id); }
+        else if (action === 'delete') {
+          if (!confirm(`Delete "${proc.name}"? This cannot be undone.`)) return;
+          api.deleteProcess(proc.id).then(async () => {
+            AppState.config = await api.getConfig();
+            DashboardModule.refreshConfig(AppState.config);
+            showToast(`${proc.name} deleted`, 'info');
+          });
+        }
       });
     });
 

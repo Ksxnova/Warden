@@ -1,7 +1,13 @@
 const fs = require('fs');
 const path = require('path');
+const { app } = require('electron');
 
-const DATA_DIR = path.join(__dirname, '..', 'data');
+// Use userData (AppData/Roaming/Warden) so the installed app can write config.
+// Falls back to the local data/ folder when running from source (npm start).
+const DATA_DIR = app
+  ? path.join(app.getPath('userData'), 'data')
+  : path.join(__dirname, '..', 'data');
+
 const CONFIG_PATH = path.join(DATA_DIR, 'config.json');
 const LOGS_DIR = path.join(DATA_DIR, 'logs');
 const STATS_DIR = path.join(DATA_DIR, 'stats');
