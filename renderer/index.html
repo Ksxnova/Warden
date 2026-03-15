@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Warden</title>
+  <link rel="stylesheet" href="styles/main.css" />
+</head>
+<body>
+<div id="app">
+  <!-- ── Sidebar ──────────────────────────────────────────────────── -->
+  <aside id="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-logo">
+        <i class="sidebar-logo-icon">🛡</i>
+        <span>Warden</span>
+      </div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-item active" data-tab="dashboard">
+        <span class="nav-icon">📊</span>
+        <span class="nav-label">Dashboard</span>
+        <span class="nav-badge" id="online-count">0</span>
+      </div>
+      <div class="nav-item" data-tab="logs">
+        <span class="nav-icon">📋</span>
+        <span class="nav-label">Logs</span>
+      </div>
+      <div class="nav-item" data-tab="stats">
+        <span class="nav-icon">📈</span>
+        <span class="nav-label">Stats</span>
+      </div>
+      <div class="nav-item" data-tab="add-edit">
+        <span class="nav-icon">➕</span>
+        <span class="nav-label">Add Process</span>
+      </div>
+      <div class="nav-item" data-tab="settings">
+        <span class="nav-icon">⚙️</span>
+        <span class="nav-label">Settings</span>
+      </div>
+    </nav>
+    <div class="sidebar-footer">
+      <span class="status-dot" id="sidebar-status-dot"></span>
+      <span id="sidebar-status-text">0/0 running</span>
+    </div>
+  </aside>
+
+  <!-- ── Main Content ─────────────────────────────────────────────── -->
+  <main id="main-content">
+
+    <!-- Dashboard Tab -->
+    <div class="tab-pane active" id="tab-dashboard">
+      <div class="page-header" style="flex-shrink:0; padding: 16px 20px 12px;">
+        <h1 class="page-title">Dashboard</h1>
+        <div class="page-actions">
+          <button class="btn btn-success btn-sm" id="btn-start-all">▶ Start All</button>
+          <button class="btn btn-danger btn-sm" id="btn-stop-all">■ Stop All</button>
+          <button class="btn btn-primary btn-sm" id="btn-add-new">+ Add Process</button>
+        </div>
+      </div>
+      <div class="dashboard-inner" id="dashboard-inner">
+        <div class="process-grid" id="process-grid">
+          <!-- Cards injected by dashboard.js -->
+        </div>
+        <div class="empty-state hidden" id="dashboard-empty">
+          <div class="empty-state-icon">🛡</div>
+          <h3>No processes yet</h3>
+          <p>Add your first Discord bot or Minecraft server to get started.</p>
+          <button class="btn btn-primary" id="btn-empty-add">+ Add Process</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Logs Tab -->
+    <div class="tab-pane" id="tab-logs">
+      <div class="logs-layout">
+        <div class="page-header" style="padding: 0;">
+          <h1 class="page-title">Logs</h1>
+        </div>
+        <div class="logs-toolbar">
+          <select id="log-process-select">
+            <option value="">— Select Process —</option>
+          </select>
+          <select id="log-level-filter">
+            <option value="all">All Levels</option>
+            <option value="stdout">stdout</option>
+            <option value="stderr">stderr</option>
+          </select>
+          <input type="text" id="log-search" placeholder="Search logs... (Ctrl+L)" />
+          <label class="checkbox-group" style="font-size:12px; color:var(--text-secondary);">
+            <input type="checkbox" id="log-regex-mode" /> Regex
+          </label>
+          <label class="checkbox-group" style="font-size:12px; color:var(--text-secondary);">
+            <input type="checkbox" id="log-auto-scroll" checked /> Auto-scroll
+          </label>
+          <button class="btn btn-ghost btn-sm" id="btn-export-log">↓ Export</button>
+          <button class="btn btn-ghost btn-sm" id="btn-clear-log">✕ Clear</button>
+          <button class="btn btn-ai btn-sm" id="btn-ai-analyze">✦ AI Analyze</button>
+          <button class="btn btn-ai btn-sm" id="btn-ai-summary">✦ Summarize</button>
+        </div>
+        <!-- AI Panel -->
+        <div class="ai-panel hidden" id="ai-panel">
+          <div class="ai-panel-header">
+            <div class="ai-panel-title">
+              <span class="ai-sparkle">✦</span>
+              <span id="ai-panel-title-text">AI Analysis</span>
+            </div>
+            <button class="btn btn-ghost btn-sm" id="btn-ai-close" style="padding:2px 7px;font-size:12px;">✕</button>
+          </div>
+          <div class="ai-content" id="ai-output"></div>
+        </div>
+        <div class="log-viewer" id="log-viewer">
+          <div class="empty-state" id="log-empty">
+            <div class="empty-state-icon">📋</div>
+            <h3>No process selected</h3>
+            <p>Select a process from the dropdown to view its logs.</p>
+          </div>
+        </div>
+        <div class="minecraft-commands hidden" id="minecraft-commands">
+          <button class="btn btn-ghost btn-sm" data-mc-cmd="say ">💬 say</button>
+          <button class="btn btn-ghost btn-sm" data-mc-cmd="list">👥 list</button>
+          <button class="btn btn-ghost btn-sm" data-mc-cmd="op ">⭐ op</button>
+          <button class="btn btn-ghost btn-sm" data-mc-cmd="kick ">👢 kick</button>
+          <button class="btn btn-ghost btn-sm" data-mc-cmd="ban ">🔨 ban</button>
+          <button class="btn btn-ghost btn-sm" data-mc-cmd="stop">⏹ stop</button>
+        </div>
+        <div class="console-bar">
+          <input type="text" class="console-input" id="console-input" placeholder="Send command to process stdin (Enter to send)..." />
+          <button class="btn btn-primary" id="btn-send-cmd">Send</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Stats Tab -->
+    <div class="tab-pane" id="tab-stats">
+      <div class="page-header">
+        <h1 class="page-title">Stats</h1>
+      </div>
+      <div class="stats-controls">
+        <select id="stats-process-select">
+          <option value="">— Select Process —</option>
+        </select>
+        <div class="time-range-btns">
+          <button class="time-range-btn active" data-range="3600000">1h</button>
+          <button class="time-range-btn" data-range="21600000">6h</button>
+          <button class="time-range-btn" data-range="86400000">24h</button>
+        </div>
+      </div>
+      <div class="stats-inner" style="overflow-y:auto;flex:1;">
+        <div class="stats-grid" id="stats-summary-grid">
+          <div class="stat-card">
+            <div class="stat-card-title">Uptime</div>
+            <div class="stat-card-value" id="stat-uptime">—</div>
+            <div class="stat-card-sub" id="stat-uptime-since">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-card-title">CPU</div>
+            <div class="stat-card-value" id="stat-cpu">—</div>
+            <div class="stat-card-sub">Average over selected range</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-card-title">Memory</div>
+            <div class="stat-card-value" id="stat-mem">—</div>
+            <div class="stat-card-sub">Peak during selected range</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-card-title">Total Crashes</div>
+            <div class="stat-card-value" id="stat-crashes">—</div>
+            <div class="stat-card-sub" id="stat-last-crash">—</div>
+          </div>
+        </div>
+        <div class="chart-container">
+          <div class="chart-title">
+            <span>CPU Usage (%)</span>
+          </div>
+          <canvas class="chart-canvas" id="chart-cpu"></canvas>
+        </div>
+        <div class="chart-container">
+          <div class="chart-title">
+            <span>Memory (MB)</span>
+          </div>
+          <canvas class="chart-canvas" id="chart-mem"></canvas>
+        </div>
+        <div class="chart-container" id="chart-players-container" style="display:none">
+          <div class="chart-title">
+            <span>Player Count</span>
+          </div>
+          <canvas class="chart-canvas" id="chart-players"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Add/Edit Tab -->
+    <div class="tab-pane" id="tab-add-edit">
+      <div class="form-inner">
+        <div class="page-header" style="padding: 0; margin-bottom: 16px;">
+          <h1 class="page-title" id="form-title">Add Process</h1>
+          <div class="page-actions" id="form-edit-actions" style="display:none">
+            <button class="btn btn-secondary btn-sm" id="btn-duplicate">Duplicate</button>
+            <button class="btn btn-danger btn-sm" id="btn-delete">Delete</button>
+          </div>
+        </div>
+
+        <form id="process-form" autocomplete="off">
+          <input type="hidden" id="form-id" />
+
+          <!-- Basic Info -->
+          <div class="form-section">
+            <div class="form-section-title">Basic Info</div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Name <span class="required-star">*</span></label>
+                <input type="text" id="form-name" placeholder="My Bot" required />
+              </div>
+              <div class="form-group">
+                <label>Type</label>
+                <select id="form-type">
+                  <option value="discord-bot">Discord Bot</option>
+                  <option value="minecraft-server">Minecraft Server</option>
+                  <option value="custom">Custom</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Working Directory <span class="required-star">*</span></label>
+              <div class="dir-input-group">
+                <input type="text" id="form-directory" placeholder="C:/bots/my-bot" />
+                <button type="button" class="btn btn-secondary" id="btn-browse-dir">Browse</button>
+                <button type="button" class="btn btn-ai" id="btn-ai-setup" title="Let AI detect settings from directory">✦ Auto-detect</button>
+              </div>
+            </div>
+            <div class="ai-hint-box hidden" id="ai-setup-panel">
+              <span class="ai-hint-icon">✦</span>
+              <div class="ai-content" id="ai-setup-output" style="flex:1;"></div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Command <span class="required-star">*</span></label>
+                <input type="text" id="form-command" placeholder="node, python, java" />
+              </div>
+              <div class="form-group">
+                <label>Arguments</label>
+                <input type="text" id="form-args" placeholder="index.js  (space-separated)" />
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Notes</label>
+              <textarea id="form-notes" placeholder="Optional notes about this process..."></textarea>
+            </div>
+            <div class="form-group">
+              <label class="checkbox-group">
+                <input type="checkbox" id="form-pinned" />
+                <span>Pin to top of dashboard</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Environment Variables -->
+          <div class="form-section">
+            <div class="form-section-title">Environment Variables</div>
+            <table class="env-table" id="env-table">
+              <thead>
+                <tr>
+                  <th>Key</th>
+                  <th>Value</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="env-tbody"></tbody>
+            </table>
+            <button type="button" class="btn btn-ghost btn-sm" id="btn-add-env" style="margin-top:8px">+ Add Variable</button>
+          </div>
+
+          <!-- Auto-Restart -->
+          <div class="form-section">
+            <div class="form-section-title">Auto-Restart</div>
+            <div class="form-group">
+              <label class="checkbox-group">
+                <input type="checkbox" id="form-auto-restart" checked />
+                <span>Enable auto-restart on crash</span>
+              </label>
+            </div>
+            <div class="form-row" id="restart-options">
+              <div class="form-group">
+                <label>Max Restarts</label>
+                <input type="number" id="form-max-restarts" value="5" min="1" max="50" />
+              </div>
+              <div class="form-group">
+                <label>Delay (seconds)</label>
+                <input type="number" id="form-restart-delay" value="3" min="0" max="300" />
+              </div>
+              <div class="form-group">
+                <label>Backoff Multiplier</label>
+                <input type="number" id="form-backoff" value="1.5" min="1" max="5" step="0.1" />
+              </div>
+            </div>
+          </div>
+
+          <!-- Schedule -->
+          <div class="form-section">
+            <div class="form-section-title">Schedule</div>
+            <div class="form-group">
+              <label class="checkbox-group">
+                <input type="checkbox" id="form-schedule-enabled" />
+                <span>Enable scheduled start/stop</span>
+              </label>
+            </div>
+            <div id="schedule-options" class="hidden">
+              <div class="form-row">
+                <div class="form-group">
+                  <label>Start Time</label>
+                  <input type="time" id="form-start-time" value="08:00" />
+                </div>
+                <div class="form-group">
+                  <label>Stop Time</label>
+                  <input type="time" id="form-stop-time" value="23:00" />
+                </div>
+              </div>
+              <div class="form-group">
+                <label>Days</label>
+                <div class="days-selector" id="days-selector">
+                  <button type="button" class="day-btn selected" data-day="1">M</button>
+                  <button type="button" class="day-btn selected" data-day="2">T</button>
+                  <button type="button" class="day-btn selected" data-day="3">W</button>
+                  <button type="button" class="day-btn selected" data-day="4">T</button>
+                  <button type="button" class="day-btn selected" data-day="5">F</button>
+                  <button type="button" class="day-btn" data-day="6">S</button>
+                  <button type="button" class="day-btn" data-day="0">S</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- RCON (Minecraft only) -->
+          <div class="form-section hidden" id="rcon-section">
+            <div class="form-section-title">RCON (Minecraft)</div>
+            <div class="form-group">
+              <label class="checkbox-group">
+                <input type="checkbox" id="form-rcon-enabled" />
+                <span>Enable RCON connection</span>
+              </label>
+            </div>
+            <div id="rcon-options" class="hidden">
+              <div class="form-row">
+                <div class="form-group">
+                  <label>Host</label>
+                  <input type="text" id="form-rcon-host" value="127.0.0.1" />
+                </div>
+                <div class="form-group">
+                  <label>Port</label>
+                  <input type="number" id="form-rcon-port" value="25575" />
+                </div>
+              </div>
+              <div class="form-group">
+                <label>Password</label>
+                <input type="password" id="form-rcon-password" />
+              </div>
+            </div>
+          </div>
+
+          <!-- playit.gg (Minecraft only) -->
+          <div class="form-section hidden" id="playit-section">
+            <div class="form-section-title">🌐 playit.gg Tunnel</div>
+            <div class="form-group">
+              <label class="checkbox-group">
+                <input type="checkbox" id="form-playit-enabled" />
+                <span>Enable playit.gg tunnel (lets players connect without port forwarding)</span>
+              </label>
+            </div>
+            <div id="playit-options" class="hidden">
+              <div class="form-group">
+                <label>playit.gg Executable Path</label>
+                <div class="dir-input-group">
+                  <input type="text" id="form-playit-path" placeholder="C:/tools/playit.exe (leave empty for auto-download)" />
+                  <button type="button" class="btn btn-secondary" id="btn-browse-playit">Browse</button>
+                </div>
+              </div>
+              <div class="form-group">
+                <button type="button" class="btn btn-secondary btn-sm" id="btn-download-playit">⬇ Auto-download playit.gg</button>
+                <span id="playit-download-status" style="font-size:12px;color:var(--text-muted);margin-left:8px;"></span>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary" id="btn-save-process">Save Process</button>
+            <button type="button" class="btn btn-secondary" id="btn-cancel-form">Cancel</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Settings Tab -->
+    <div class="tab-pane" id="tab-settings">
+      <div class="settings-inner">
+        <div class="page-header" style="padding: 0; margin-bottom: 16px;">
+          <h1 class="page-title">Settings</h1>
+        </div>
+
+        <!-- AI -->
+        <div class="settings-section">
+          <div class="settings-section-title">✦ AI Features</div>
+          <div class="settings-row">
+            <div class="settings-label">
+              <span>AI Provider</span>
+              <small>Which AI service to use for crash analysis</small>
+            </div>
+            <div class="settings-control">
+              <select id="setting-ai-provider" style="width:160px">
+                <option value="groq">Groq (fast, free)</option>
+                <option value="openrouter">OpenRouter (many models)</option>
+                <option value="anthropic">Anthropic Claude</option>
+              </select>
+            </div>
+          </div>
+          <div class="settings-row">
+            <div class="settings-label">
+              <span>AI Model</span>
+              <small>Model to use for analysis</small>
+            </div>
+            <div class="settings-control">
+              <select id="setting-ai-model" style="width:220px">
+                <optgroup label="Groq">
+                  <option value="llama-3.3-70b-versatile">Llama 3.3 70B (Groq)</option>
+                  <option value="llama3-70b-8192">Llama 3 70B (Groq)</option>
+                  <option value="mixtral-8x7b-32768">Mixtral 8x7B (Groq)</option>
+                  <option value="gemma2-9b-it">Gemma 2 9B (Groq)</option>
+                </optgroup>
+                <optgroup label="OpenRouter">
+                  <option value="meta-llama/llama-3.3-70b-instruct:free">Llama 3.3 70B (free)</option>
+                  <option value="google/gemma-3-27b-it:free">Gemma 3 27B (free)</option>
+                  <option value="mistralai/mistral-7b-instruct:free">Mistral 7B (free)</option>
+                  <option value="anthropic/claude-opus-4-6">Claude Opus 4.6 (paid)</option>
+                  <option value="openai/gpt-4o">GPT-4o (paid)</option>
+                </optgroup>
+                <optgroup label="Anthropic">
+                  <option value="claude-opus-4-6">Claude Opus 4.6</option>
+                  <option value="claude-sonnet-4-6">Claude Sonnet 4.6</option>
+                </optgroup>
+              </select>
+            </div>
+          </div>
+          <div class="settings-row">
+            <div class="settings-label">
+              <span>Groq API Key</span>
+              <small>console.groq.com — free tier available</small>
+            </div>
+            <div class="settings-control">
+              <div class="api-key-input-group">
+                <input type="password" id="setting-groq-key" placeholder="gsk_..." autocomplete="off" />
+                <button class="btn btn-ghost btn-sm" data-toggle="setting-groq-key" style="padding:6px 10px;font-size:13px;">👁</button>
+              </div>
+            </div>
+          </div>
+          <div class="settings-row">
+            <div class="settings-label">
+              <span>OpenRouter API Key</span>
+              <small>openrouter.ai — many free models</small>
+            </div>
+            <div class="settings-control">
+              <div class="api-key-input-group">
+                <input type="password" id="setting-openrouter-key" placeholder="sk-or-v1-..." autocomplete="off" />
+                <button class="btn btn-ghost btn-sm" data-toggle="setting-openrouter-key" style="padding:6px 10px;font-size:13px;">👁</button>
+              </div>
+            </div>
+          </div>
+          <div class="settings-row">
+            <div class="settings-label">
+              <span>Anthropic API Key</span>
+              <small>console.anthropic.com</small>
+            </div>
+            <div class="settings-control">
+              <div class="api-key-input-group">
+                <input type="password" id="setting-api-key" placeholder="sk-ant-..." autocomplete="off" />
+                <button class="btn btn-ghost btn-sm" data-toggle="setting-api-key" style="padding:6px 10px;font-size:13px;">👁</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Appearance -->
+        <div class="settings-section">
+          <div class="settings-section-title">Appearance</div>
+          <div class="settings-row">
+            <div class="settings-label">
+              <span>Dark Theme</span>
+              <small>Switch between dark and light mode</small>
+            </div>
+            <div class="settings-control">
+              <label class="toggle">
+                <input type="checkbox" id="setting-dark-theme" checked />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+          <div class="settings-row">
+            <div class="settings-label">
+              <span>Accent Color</span>
+              <small>Primary highlight color</small>
+            </div>
+            <div class="settings-control">
+              <input type="color" class="color-picker" id="setting-accent-color" value="#5865F2" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Logging -->
+        <div class="settings-section">
+          <div class="settings-section-title">Logging</div>
+          <div class="settings-row">
+            <div class="settings-label">
+              <span>Log Buffer Size</span>
+              <small>Max lines kept per process in memory</small>
+            </div>
+            <div class="settings-control">
+              <input type="number" id="setting-log-buffer" value="5000" min="100" max="50000" style="width:90px" />
+            </div>
+          </div>
+          <div class="settings-row">
+            <div class="settings-label">
+              <span>Log Retention (days)</span>
+              <small>How long to keep log files on disk</small>
+            </div>
+            <div class="settings-control">
+              <input type="number" id="setting-log-retention" value="7" min="1" max="365" style="width:90px" />
+            </div>
+          </div>
+        </div>
+
+        <!-- App Behavior -->
+        <div class="settings-section">
+          <div class="settings-section-title">App Behavior</div>
+          <div class="settings-row">
+            <div class="settings-label">
+              <span>Start with Windows</span>
+              <small>Launch app on system startup</small>
+            </div>
+            <div class="settings-control">
+              <label class="toggle">
+                <input type="checkbox" id="setting-start-with-windows" />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+          <div class="settings-row">
+            <div class="settings-label">
+              <span>Start Minimized</span>
+              <small>Start in tray instead of showing window</small>
+            </div>
+            <div class="settings-control">
+              <label class="toggle">
+                <input type="checkbox" id="setting-start-minimized" />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Backup -->
+        <div class="settings-section">
+          <div class="settings-section-title">Config Backup</div>
+          <div class="flex-row" style="flex-wrap:wrap; gap:10px; padding-top: 4px;">
+            <button class="btn btn-secondary" id="btn-export-config">↓ Export Config</button>
+            <button class="btn btn-secondary" id="btn-import-config">↑ Import Config</button>
+          </div>
+        </div>
+
+        <div style="margin-top:16px;">
+          <button class="btn btn-primary" id="btn-save-settings">Save Settings</button>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- Toast container -->
+<div id="toast-container"></div>
+
+<script src="js/app.js"></script>
+<script src="js/dashboard.js"></script>
+<script src="js/logs.js"></script>
+<script src="js/stats.js"></script>
+<script src="js/add-edit.js"></script>
+<script src="js/settings.js"></script>
+</body>
+</html>

@@ -1,0 +1,141 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Pre-populate winCodeSign cache (symlink workaround)
+        shell: pwsh
+        run: |
+          $url = "https://github.com/electron-userland/electron-builder-binaries/releases/download/winCodeSign-2.6.0/winCodeSign-2.6.0.7z"
+          $cacheDir = "$env:LOCALAPPDATA\electron-builder\Cache\winCodeSign"
+          $destDir  = "$cacheDir\winCodeSign-2.6.0"
+          if (Test-Path $destDir) { Write-Host "Cache already exists"; exit 0 }
+          New-Item -ItemType Directory -Force $cacheDir | Out-Null
+          $tmp = "$cacheDir\wcs.7z"
+          Invoke-WebRequest $url -OutFile $tmp
+          $7za = "node_modules\7zip-bin\win\x64\7za.exe"
+          & $7za x -y $tmp "-o$destDir" | Out-Null
+          # Create stub files for the macOS symlinks that Windows can't extract
+          $lib = "$destDir\darwin\10.12\lib"
+          if (!(Test-Path "$lib\libcrypto.dylib")) {
+            Copy-Item "$lib\libcrypto.1.0.0.dylib" "$lib\libcrypto.dylib" -ErrorAction SilentlyContinue
+          }
+          if (!(Test-Path "$lib\libssl.dylib")) {
+            Copy-Item "$lib\libssl.1.0.0.dylib" "$lib\libssl.dylib" -ErrorAction SilentlyContinue
+          }
+          Write-Host "winCodeSign cache ready"
+
+      - name: Build Windows
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+        run: npx electron-builder --win
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: |
+            dist/*.exe
+            dist/*.blockmap
+
+  build-mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build macOS
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+        run: npx electron-builder --mac
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac
+          path: dist/*.dmg
+
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Linux
+        run: npx electron-builder --linux
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: |
+            dist/*.AppImage
+            dist/*.deb
+            dist/*.rpm
+            dist/*.tar.gz
+
+  release:
+    needs: [build-windows, build-mac, build-linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Warden ${{ github.ref_name }}
+          body: |
+            ## Warden ${{ github.ref_name }}
+
+            ### Downloads
+            | Platform | File |
+            |---|---|
+            | 🪟 Windows (installer) | `Warden Setup *.exe` |
+            | 🪟 Windows (portable)  | `Warden *.exe` (the smaller one) |
+            | 🍎 macOS               | `Warden-*.dmg` |
+            | 🐧 Linux (AppImage)    | `Warden-*.AppImage` |
+            | 🐧 Linux (Debian/Ubuntu) | `warden_*.deb` |
+            | 🐧 Linux (Fedora/RHEL) | `warden-*.rpm` |
+
+            > **Windows note:** Windows may show a SmartScreen warning since the app isn't code-signed. Click *More info → Run anyway*.
+          files: artifacts/**/*
+          draft: false
+          prerelease: false

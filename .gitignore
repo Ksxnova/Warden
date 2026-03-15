@@ -1,0 +1,8 @@
+node_modules/
+data/logs/
+data/stats/
+data/config.json
+*.tmp
+.DS_Store
+dist/
+out/
